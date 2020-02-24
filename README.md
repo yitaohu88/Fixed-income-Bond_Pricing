@@ -1,2 +1,3 @@
-# Fixed-income-Bond_Pricing
-Basic bond valuation in HW1 and simple strip-principal arbitrage trading algorithm implemented in HW2
+# Fixed-income
+Projects completed for fixed income class at UCLA MFE program. 
+All projects are completed in R
