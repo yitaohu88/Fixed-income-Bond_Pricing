@@ -1,0 +1,142 @@
+---
+title: "Fixed Income HW4"
+author: "YiTao Hu, Charles Rambo, Junyu(Kevin) Wu, Jin (Jane) Huangfu"
+date: "07/02/2020"
+output: pdf_document
+---
+
+```{r}
+#import the data
+Rate_paths=data.frame(matrix(data = c(0.04,0.04,0.04,0.04,0.04,0.05,0.03,0.04,0.07,0.02,0.07,0.02,0.05,0.06,0.08,0.06,0.04,0.07,0.04,0.09,0.03,0.07,0.08,0.04,0.12,0.06,0.06,0.10,0.05,0.09),nrow = 5,ncol = 6))
+colnames(Rate_paths)=seq(0,5,1)
+Rate_paths
+```
+#1 
+Recall from the slides, under risk neutral valuation, the PV formula:
+$$PV=E^Q_0[e^{-AT}\Phi(X_T)]$$
+where A is the average rate from 0 to T and $\Phi(X_T)$ is the payoff function at T
+```{r}
+valuate_risk_neutral=function(paths,FUN=100,...){
+   #initialization
+    DerivPrice=rep(0,ncol(paths)-1)
+    for (mar in 2:ncol(paths)){
+    trajectories=paths[,1:mar]
+    A=rowMeans(trajectories)
+    DerivPrice[mar-1]=mean(exp(-A*(mar-1))*FUN(trajectories,...))
+  }
+  DerivPrice=data.frame(t(DerivPrice))
+  colnames(DerivPrice)=seq(1,(ncol(paths)-1),1)
+  return(DerivPrice)
+}
+```
+
+Put into code, the prices of ZCB would be
+```{r}
+#wrirte the payoff function of ZCBs
+ZCP_Phi=function(df)
+{
+  return(100)
+}
+valuate_risk_neutral(paths = Rate_paths,FUN = ZCP_Phi)
+```
+
+
+
+#2
+The payoff function of a in interest rate cap would be:
+$$Max(0,R_T-0.05)$$
+Write the payoff function of interest rate cap
+```{r}
+Phi_cap=function(df,K){
+  Payoff=pmax(0,df[,ncol(df)]-K)
+  return(Payoff)
+}
+```
+
+Compute the interest rate cap:
+```{r}
+valuate_risk_neutral(paths = Rate_paths,FUN = Phi_cap,K=0.05)
+```
+
+#3
+The payoff function of a in interest rate floor would be:
+$$Max(0,K-R_T)$$
+Write the payoff function:
+```{r}
+Phi_floor=function(df,K){
+  Payoff=pmax(0,K-df[,ncol(df)])
+  return(Payoff)
+}
+```
+
+Compute the interest rate cap:
+```{r}
+valuate_risk_neutral(paths = Rate_paths,FUN = Phi_floor,K=0.07)
+```
+
+#4
+Compute the price of a five year call on short interest rate:
+```{r}
+valuate_risk_neutral(paths = Rate_paths,FUN = Phi_cap,K=0.065)[ncol(Rate_paths)-1]
+```
+Compute the price of a five year put on short interest rate:
+```{r}
+valuate_risk_neutral(paths = Rate_paths,FUN = Phi_floor,K=0.065)[ncol(Rate_paths)-1]
+```
+Therefore a a five year put on short term rate is more valuable. 
+
+
+#5
+The payoff of the Asian option should be:
+$$Max(0,\bar{R}-K)$$ 
+for call and 
+$$Max(0,K-\bar{R})$$ 
+for put. 
+
+Write the payoff fuction
+```{r}
+Phi_Asian_cap=function(df,K){
+  Payoff=pmax(0,rowMeans(df)-K)
+  return(Payoff)
+}
+Phi_Asian_floor=function(df,K){
+  Payoff=pmax(0,K-rowMeans(df))
+  return(Payoff)
+}
+```
+
+Compute the price of the Asian call:
+```{r}
+valuate_risk_neutral(paths = Rate_paths,FUN = Phi_cap,K=0.06)[ncol(Rate_paths)-1]
+```
+Compute the price of the Asian put:
+```{r}
+valuate_risk_neutral(paths = Rate_paths,FUN = Phi_Asian_floor,K=0.06)[ncol(Rate_paths)-1]
+```
+The asian put is more valuable in this case
+
+#6
+The standard deviation of the short-term rate at year 5:
+```{r}
+sd(Rate_paths[,6])
+```
+The standard deviation of the average short-term rate year 5
+```{r}
+sd(rowMeans(Rate_paths))
+```
+
+Obviously, the volatility of average short-term rate is much smaller than that of terminal short-term rate. Because Option price is positively correlated the volatility of underlying asset, the European call is more valuaable than Asian Call.
+
+#7
+In the lecture, we proved that, by the condition of no abitrage, the future prices at time 0 must equal to the martingale expectation of the underlying asset at maturity T.
+$$K=E^Q_0(S_T)$$
+Therefore, the futures prices for short-term rate (Eurodollar futures) should be:
+```{r}
+colMeans(Rate_paths)
+```
+
+
+
+
+
+
