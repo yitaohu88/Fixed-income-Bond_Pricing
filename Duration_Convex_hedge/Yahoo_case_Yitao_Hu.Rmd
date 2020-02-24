@@ -1,0 +1,133 @@
+---
+title: "Yahoo_Case"
+author: "YiTao Hu, Jin (Jane) Huangfu, Junyu (Kevin) Wu, Charles Rambo"
+date: "25/01/2020"
+output: pdf_document
+---
+Assume we hold one unit of short position on the junk bond (because it is a liability), and buy x unit of T-bill and y unit of T-note to hedge interest rate risk. In addition, assume we want to do a duration and convexity hedge. 
+In essense, we want:
+$$\Delta P_{port}=x\Delta P_{bill}+y\Delta P_{note}-\Delta P_{corp}=0$$
+Recall the 2nd order approximate of price change: 
+
+$$\Delta P=-D^*P\Delta r+\frac{1}{2}C_TP(\Delta r)^2$$
+Where $D^*$ is the Modified duration of the bond, and $C_T$is the Convexity of the bond.
+
+Therefore, we want: 
+$$\Delta P_{port}=xP_{bill}(-D^*_{bill}\Delta r+\frac{1}{2}C_{Tbill}(\Delta r)^2)+yP_{note}(-D^*_{note}\Delta r+\frac{1}{2}C_{Tnote}(\Delta r)^2)-P_{corp}(-D^*_{corp}\Delta r+\frac{1}{2}C_{Tcorp}(\Delta r)^2)=0$$
+
+To make it strictly 0, we must have its first and second order co-efficient equal 0. So we have:
+$$D^*_{Port}=-xP_{bill}D^*_{bill}-yP_{note}D^*_{note}+P_{corp}D^*_{corp}=0$$ 
+and 
+$$C_{TPort}=xP_{bill}C_{Tbill}+yP_{note}C_{Tnote}-P_{corp}C_{Tcorp}=0$$
+
+solve this two system of equation in matrix form
+$$\begin{pmatrix}-D^*_{bill} & -D^*_{note}\\ C_{Tbill} & C_{Tnote} \end{pmatrix}\begin{pmatrix} \frac{xP_{bill}}{P_{corp}} \\ \frac{yP_{note}}{P_{corp}} \end{pmatrix}=\begin{pmatrix} -D^*_{corp} \\ C_{Tcorp} \end{pmatrix}$$
+where the vector $\begin{pmatrix} \frac{xP_{bill}}{P_{corp}} \\ \frac{yP_{note}}{P_{corp}} \end{pmatrix}$ is the weights we want solve for 
+```{r}
+# import library and input info
+library(derivmkts)
+#initalization
+bond_data=data.frame(matrix(data = 0,nrow = 3,ncol = 3))
+rownames(bond_data)=c('10-year','1-year','Corp-Bond')
+colnames(bond_data)=c('Coupon','Maturity','Yield')
+#note the corp bond paid coupon semi-annually but the 10-yr bond paid coupon annully
+bond_data$Coupon=c(5,0,11)
+bond_data$Maturity=c(10,1,7)
+bond_data$Yield=c(0.05,0.0075,0.08)
+
+get_price_ModiD_Conv=function(df)
+  {for (i in 1:2)
+    {
+    #compute bond price
+    df$Price[i]=bondpv(coupon = df$Coupon[i],mat = df$Maturity[i],yield = df$Yield[i],principal = 100,freq = 1)
+    #compute bond modified duration
+    df$ModiD[i]=duration(price = df$Price[i],coupon = df$Coupon[i],mat = df$Maturity[i],principal = 100,freq = 1,modified = T)
+    #compute bond convexity 
+    df$Conv[i]=convexity(price = df$Price[i],coupon = df$Coupon[i],mat = df$Maturity[i],principal = 100,freq = 1)
+  }
+  # compute price, duration and convexity for corp bond (semi-annul)
+    #compute bond price
+    df$Price[3]=bondpv(coupon = df$Coupon[3],mat = df$Maturity[3],yield = df$Yield[3],principal = 100,freq = 2)
+    #compute bond modified duration
+    df$ModiD[3]=duration(price = df$Price[3],coupon = df$Coupon[3],mat = df$Maturity[3],principal = 100,freq = 2,modified = T)
+    #compute bond convexity 
+    df$Conv[3]=convexity(price = df$Price[3],coupon = df$Coupon[3],mat = df$Maturity[3],principal = 100,freq = 2)
+    return(df)
+}
+
+bond_data=get_price_ModiD_Conv(df = bond_data)
+
+get_hedge_weights=function(df){
+    # construct A matrix and b vector     
+  A_mtx=as.matrix(df[1:2,5:6])
+  A_mtx=t(A_mtx)
+  A_mtx[1,]=-A_mtx[1,]
+  b=c(-df$ModiD[3],df$Conv[3])
+  weights=solve(a = A_mtx,b = b)
+  weights=as.vector(append(x = weights,values = -1.0,after = 3))
+  return(weights)
+}
+
+Port_weights=get_hedge_weights(df=bond_data)
+
+```
+Therefore, the weights we should invest in the T-notes, T-bill and corp bond are:
+```{r}
+Port_weights
+```
+
+To compute the capital gain or loss, we evalutae our initial hedged portfolio, the portfolio after rates change and take the difference.
+
+To compute the new hedge ratio, we recompute the duration and convexity of the three bonds and recompute the perfect hedge ratio. 
+```{r}
+# compute the initial value of the portfolio
+ini_Port_value=t(Port_weights)%*%bond_data$Price
+#compute the new bond info when rates go up 50bp
+up_bond=bond_data[,1:3]
+up_bond$Yield=bond_data$Yield+0.005
+# recompute all the prices, modified duration and convexity
+up_bond=get_price_ModiD_Conv(df=up_bond)
+#compute the value difference in portfolio 
+up_Port_diff=t(Port_weights)%*%up_bond$Price-ini_Port_value
+#compute the new hedge weights
+up_hedge_weights=get_hedge_weights(df = up_bond)
+#compute change in positions
+up_change_positions=up_hedge_weights-Port_weights
+```
+
+When the rates go up by 50 basis point, the capital gain or loss as a percentage of market value of high yield bond would be:
+```{r}
+up_Port_diff/bond_data$Price[3]
+```
+The position change for 10-year bond, 1-year bond and Corp bond would be 
+```{r}
+up_change_positions
+```
+
+To compute the gain/loss when rates go down by 50 bs, and the new hedge ratio
+```{r}
+# compute the initial value of the portfolio
+ini_Port_value=t(Port_weights)%*%bond_data$Price
+#compute the new bond info when rates go up 50bp
+down_bond=bond_data[,1:3]
+down_bond$Yield=bond_data$Yield-0.005
+# recompute all the prices, modified duration and convexity
+down_bond=get_price_ModiD_Conv(df=down_bond)
+#compute the value difference in portfolio 
+down_Port_diff=t(Port_weights)%*%down_bond$Price-ini_Port_value
+#compute the new hedge weights
+down_hedge_weights=get_hedge_weights(df = down_bond)
+#compute change in positions
+down_change_positions=down_hedge_weights-Port_weights
+```
+When the rates go down by 50 basis point, the capital gain or loss as a percentage of market value of high yield bond would be:
+```{r}
+down_Port_diff/bond_data$Price[3]
+```
+The position change for 10-year bond, 1-year bond and Corp bond would be 
+```{r}
+down_change_positions
+```
+
+
+

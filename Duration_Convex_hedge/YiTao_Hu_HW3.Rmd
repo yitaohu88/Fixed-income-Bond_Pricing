@@ -1,0 +1,129 @@
+---
+title: "Fixed Income HW3"
+author: "YiTao Hu, Jin (Jane) Huangfu, Junyu (Kevin) Wu, Charles Rambo"
+date: "24/01/2020"
+output: pdf_document
+---
+
+## Question 1
+Use the zero-coupon curve you created in Homework 2 to compute the par rates for semiannual pay bonds with maturities ranging from 1 year to 25 years.
+```{r}
+#import packages
+library(readxl)
+library(derivmkts)
+#import the data
+ZCB_data=read_excel("~/Desktop/UCLAMFE/Fixed Income/week3/Hw3data_2020.xlsx")
+# drop the nas 
+ZCB_data=na.omit(ZCB_data)
+# compute the semi-annual par rates from the discount factors
+ZCB_data$parRates=(2*((100-100*ZCB_data$`D(T)`))/cumsum(ZCB_data$`D(T)`))
+#plot the par curves
+plot(ZCB_data$parRates,xlab = 'Maturity',ylab = 'Par Rates',
+     main = 'Par Curves',type = 'l')
+```
+
+## Question 2
+For each of these bonds, compute their DV01.
+```{r}
+ZCB_data$MacD=0 #initialization
+#compute the Maculey Duration for the bond
+for (i in 1:nrow(ZCB_data)){
+  #compute the Maculey Duration for the bond
+  ZCB_data$MacD[i]=duration(price = 100,coupon = ZCB_data$parRates[i],mat = ZCB_data$T[i],principal = 100,freq = 2,modified = F)
+}
+
+#compute the modified duration of the bond
+ZCB_data$ModiD=ZCB_data$MacD/(1+ZCB_data$parRates/200)
+#compute DV01
+ZCB_data$DV01=ZCB_data$ModiD*100*0.0001
+#plot the DVO1 of the par bonds
+plot(x=seq(0.5,25,0.5),y = ZCB_data$DV01,xlab = 'Maturity',ylab = 'DVO1',main = 'DVO1 of par bonds',type='l')
+```
+So, the DV01 of the par bonds are:
+```{r}
+#initialize the result dataframe
+output=data.frame(matrix(data = 0,nrow = nrow(ZCB_data),ncol = 1))
+row.names(output)=seq(0.5,25,0.5)
+colnames(output)=c('DV01')
+output$DV01=ZCB_data$DV01
+output
+```
+
+## Question 3
+Compute the Macauley and modified durations for the 1, 2, 3, 4, and 5 year bonds in question 1 above.
+
+The Macauley and modified durations for 1,2,3,4,5 year bonds are:
+```{r}
+#initialize the result dataframe
+output=data.frame(matrix(data = 0,nrow = 5,ncol = 2))
+row.names(output)=seq(1,5,1)
+colnames(output)=c('Macauley Duration','Modified Duration')
+output$`Macauley Duration`=ZCB_data$MacD[seq(2,10,2)]
+output$`Modified Duration`=ZCB_data$ModiD[seq(2,10,2)]
+output
+```
+
+## Question 4
+You have a $5,000,000 liability due in 3 years. How much do you need to invest in a 3 year zero-coupon bond to defease the liability? Use the same zero-coupon curve as in 1.
+
+To have $5,000,000 cash flows 3 years later, we need to invest the present value of this amount in 3-year the zero-coupon Bond, which is:
+$$ 5,000,000\times D_3=$$
+```{r}
+5000000*ZCB_data$`D(T)`[6]
+```
+
+
+## Question 5
+ Using the data in question 1, compute the convexities of the 1, 2, 3, 4, and 5 year bonds.
+
+```{r}
+ZCB_data$Convex=0 #initialization
+#compute the Convexity for the par bonds
+for (i in 1:nrow(ZCB_data)){
+  ZCB_data$Convex[i]=convexity(price = 100,coupon = ZCB_data$parRates[i],mat = ZCB_data$T[i],principal = 100,freq = 2)
+}
+#initialize the result dataframe
+output=data.frame(matrix(data = 0,nrow = 5,ncol = 1))
+row.names(output)=seq(1,5,1)
+colnames(output)=c('Convexity')
+output$Convexity=ZCB_data$Convex[seq(2,10,2)]
+output
+```
+
+## Question 6
+Use the computed dollar durations and convexities for the 1, 2, 3, 4, and 5 year bonds, compute the price change of a 100 basis point upward and downward parallel shift in the zero-curve. Compare the price changes with the actual price change obtained by recomputing the price of the bond from the shifted spot curve.
+
+The approximate price change given by duration and given by the following formula:
+
+$$\Delta P=-DV01\times10,000\times \Delta y+\frac{1}{2}\times Convex\times \Delta y^2\times P $$
+
+```{r}
+# grab related information 
+output=data.frame(matrix(data = 0,nrow = 5,ncol = 2))
+row.names(output)=seq(1,5,1)
+colnames(output)=c('DV01','Convexity')
+output$DV01=ZCB_data$DV01[seq(2,10,2)]
+output$Convexity=ZCB_data$Convex[seq(2,10,2)]
+output$Coupon=ZCB_data$parRates[seq(2,10,2)]
+output$mat=ZCB_data$T[seq(2,10,2)]
+output$Price_ini=100
+# compute approx price change upward and downward 100  bp
+output$P_Approx_up=-output$DV01*10000*0.01+0.5*output$Convexity*(0.01)^2*100
+output$P_Approx_down=-output$DV01*10000*(-0.01)+0.5*output$Convexity*(-0.01)^2*100
+# compute the real bond price when the parallel change in rates
+for (i in 1:nrow(output))
+  {#compute the actual price change when rates go up
+  output$act_P_up[i]=bondpv(coupon = output$Coupon[i],mat = output$mat[i],yield = (output$Coupon[i]/100+0.01),principal = 100,freq = 2)-100
+  # compute the actual price change when rates go down
+  output$act_P_down[i]=bondpv(coupon = output$Coupon[i],mat = output$mat[i],yield = (output$Coupon[i]/100-0.01),principal = 100,freq = 2)-100
+}
+```
+The approximate price changes and actual price changes are as followed.
+```{r}
+output[,6:9]
+```
+
+
+
+
+
