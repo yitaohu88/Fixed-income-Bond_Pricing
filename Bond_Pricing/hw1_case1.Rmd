@@ -1,0 +1,106 @@
+---
+title: "Case 1"
+author: "YiTao Hu, Jin (Jane) Huangfu, Charles Rambo, Junyu (Kevin) Wu"
+date: "1/13/2020"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Case 1 
+
+The key idea of Treasury bond arbitrage is to use two coupon bonds of the same maturity to build a replicating portfolio of the zero-coupon bond and exploit the potential price discrepancy. 
+
+Suppose we have 2 coupon bonds whose coupon rates are $C_1$ and $C_2$, and our replicating portfolio has weights of x, 1-x in the two bonds respectively. 
+
+To replicating a zero coupon bond, at each coupon payment date, we have to make sure that we have zero net cash flow.
+$$C_1*x+C_2*(1-x)=0$$
+
+solve for x:
+$$x=\frac{C_2}{C2-C1}$$
+
+where the price of the synthetic zero coupon bond is:
+$$P_{synthetic}=x*P_1+(1-x)*P_2$$
+
+and the profit of each trade is:
+$$Profit=|P_{synthetic}-P_{ZCB}|$$
+The outputs of bonds mature at 11/15/2022
+```{r}
+ZCB_11_15_22=86.15
+small_11_15_22=98+(18.5/32)+(1.625)/2*55/181 #price of the 1.625 coupon rate bond
+large_11_15_22=143+2.5/32+(7.625)/2*55/181 # price of the 7.625 coupon rate bond
+
+# use the two coupon bonds to sythesize the ZCB and check the price discrapency
+coup_price=c(small_11_15_22,large_11_15_22)
+weights=c(7.625/(7.625-1.625),1-7.625/(7.625-1.625))
+sythetic_val=coup_price%*%weights
+profit_each_trade=sythetic_val-ZCB_11_15_22
+
+output=list("ZCB_price"=ZCB_11_15_22,"small_coupon_bond"=small_11_15_22,"large_coupon_bond"=large_11_15_22,
+            "weights"=weights,"sythetic_ZCB"=sythetic_val,"profit per trade"=profit_each_trade)
+output
+```
+
+The outputs of bonds mature at 02/15/2023:
+```{r}
+ZCB_02_15_23=85.43
+small_02_15_23=101+(7/32)+(2.000)/2*144/184 #price of the 1.625 coupon rate bond
+large_02_15_23=140+2.5/32+(7.125)/2*144/184 # price of the 7.625 coupon rate bond
+
+# use the two coupon bonds to sythesize the ZCB and check the price discrapency
+coup_price=c(small_02_15_23,large_02_15_23)
+weights=c(7.125/(7.125-2.00),1-7.125/(7.125-2.00))
+sythetic_val=coup_price%*%weights
+profit_each_trade=sythetic_val-ZCB_02_15_23
+output=list("ZCB_price"=ZCB_02_15_23,"small_coupon_bond"=small_02_15_23,"large_coupon_bond"=large_02_15_23,
+            "weights"=weights,"sythetic_ZCB"=sythetic_val,"profit per trade"=profit_each_trade)
+output
+```
+The outputs of bonds mature at 08/15/2023 :
+
+```{r}
+ZCB_08_15_23=84.29
+small_08_15_23=104+(27.5/32)+(2.50)/2*147/184 #price of the 1.625 coupon rate bond
+large_08_15_23=135+2/32+(6.25)/2*147/184 # price of the 7.625 coupon rate bond
+
+# use the two coupon bonds to sythesize the ZCB and check the price discrapency
+coup_price=c(small_08_15_23,large_08_15_23)
+weights=c(6.25/(6.25-2.50),1-6.25/(6.25-2.50))
+sythetic_val=coup_price%*%weights
+profit_each_trade=sythetic_val-ZCB_08_15_23
+
+output=list("ZCB_price"=ZCB_08_15_23,"small_coupon_bond"=small_08_15_23,"large_coupon_bond"=large_08_15_23,
+            "weights"=weights,"sythetic_ZCB"=sythetic_val,"profit per trade"=profit_each_trade)
+output
+```
+
+The outputs of bonds mature at 11/15/2024 are as followed:
+```{r}
+#compute the dirty prices for the three bonds mature at 02/15/2022
+
+ZCB_11_15_24=81.23
+small_11_15_24=102+(17.5/32)+(2.25)/2*55/181 #price of the 1.625 coupon rate bond
+large_11_15_24=150+2/32+(7.50)/2*55/181 # price of the 7.625 coupon rate bond
+
+# use the two coupon bonds to sythesize the ZCB and check the price discrapency
+coup_price=c(small_11_15_24,large_11_15_24)
+weights=c(7.50/(7.50-2.25),1-7.50/(7.50-2.25))
+sythetic_val=coup_price%*%weights
+profit_each_trade=sythetic_val-ZCB_11_15_24
+
+output=list("ZCB_price"=ZCB_11_15_24,"small_coupon_bond"=small_11_15_24,"large_coupon_bond"=large_11_15_24,
+            "weights"=weights,"sythetic_ZCB"=sythetic_val,"profit per trade"=profit_each_trade)
+output
+```
+From above, we can conclude our strategy: because the price of the synthetic zero-coupon bond is higher than the price of traded zero-coupon bond, we exploit this price discrepancy by longing the traded zero-coupon bond and shorting the synthetic zero-coupon bond. 
+
+Our expected profit per unit trade for these four trades are 0.380013,0.6241159,0.4339583 and 0.9530357. 
+
+
+
+

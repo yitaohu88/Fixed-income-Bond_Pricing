@@ -1,0 +1,51 @@
+---
+title: "Case 2"
+author: "YiTao Hu, Jin (Jane) Huangfu, Charles Rambo, Junyu (Kevin) Wu"
+date: "1/13/2020"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Case 2
+
+The idea of strip-principal abitrage is that the coupon and the par with the same maturity are identical;therefore, their prices should converge as time passes and we can exploit if there is a price discrepancy.
+
+```{r}
+#import libraries
+library(readxl)
+library(xts)
+#import the dataset 
+data = read_xlsx("Data for Case 2.xlsx", range = "B5:D257")
+xtsdata = xts(data[-1], order.by = data$Date)
+#compute long /short position and portfolio value 
+short = xtsdata$`Coupon Strip (Price per $100 of face value)`
+long = xtsdata$`Principal Strip (Price per $100 of face value)`
+initial_cap = 5
+cash  = short[1] - long[1]
+xtsdata$portfolio = rep(initial_cap) + as.numeric(cash) - short + long
+#compute the return and performance stats
+daily_ret = as.numeric(xtsdata$portfolio[-1]/lag(xtsdata$portfolio)[-1] -1)
+hist(daily_ret,main='Distribution of daily returns')
+annual_ret = prod(daily_ret+1)-1
+volatility = sd(daily_ret)
+annual_vol = sqrt(nrow(xtsdata)) * volatility
+rf = 0.002
+SR = (annual_ret - rf)/annual_vol
+```
+```{r}
+output=list("annual realized return"=annual_ret,'annual return volatility'=annual_vol,'annualized Sharpe ratio'=SR)
+output
+```
+
+From the performance statistics and histogram above, we can see that the strip arbitrage strategy is NOT actually risk-free. Its volatility is significantlt larger than the return and the annualized Sharpe Ratio is only about 0.46. As for its daily retuurns, they are approximately normally distributed with mean around 0, which is very contradictory to the intuition that arbitrage strategies should be risk-free. In addition, we can see the distribution is skewed and the left tail is fatter than the right tail, which implies that the probability of incurring large losses is greater than that of incurring large gains. 
+
+In conclusion, this arbitrage strategy is at least as risky as, if not more, than other long-only strategy and also is likely to incure large losses.
+
+
+
