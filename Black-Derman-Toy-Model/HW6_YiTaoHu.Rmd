@@ -1,0 +1,176 @@
+---
+title: "Fixed Income:Black_Derman_Toy Model"
+author: "YiTao Hu, Charles Rambo, Junyu(Kevin) Wu, Jin (Jane) Huangfu"
+date: "20/02/2020"
+output: pdf_document
+---
+
+```{r}
+#import data
+library(readxl)
+vol_ts=read_excel("Homework 6 voldat.xlsx",col_names = FALSE)
+vol_ts=vol_ts$...1
+True_DTs = read_excel("Homework 6 pfilea.xlsx", col_names = FALSE)
+True_DTs=True_DTs$...1
+```
+### Question 1
+##initizliation of interest rate tree
+
+We first need to randomly initialize the short rate $r_t^*$ at each point of time t. 
+```{r}
+#initizlize R*
+steps=29
+r_stars=abs(rnorm(n = (steps+1))/100)
+```
+
+From $r_t^*$, we can map all the interest rate tree with the folloing formula:
+$$r_t^{id}=r_t^*e^{-2i\sigma_t\sqrt{0.5}}$$
+where i is the number of doward movements from the top state. We can define a function to do the computation. 
+
+```{r}
+
+#define a function to compute R^id from R^*
+get_Rid=function(r_star,id,vol){
+  rid=r_star*exp(-2*id*vol*0.5^0.5)
+  return (rid)
+}
+get_all_Rids=function(r_stars,vol_ts){
+  #initialize the rate tree dataframe 
+  rateTree=data.frame(matrix(0,nrow = length(r_stars),ncol = length(r_stars)))
+  colnames(rateTree)=seq(0,(length(r_stars)-1)/2,0.5)
+  rateTree[1,]=r_stars
+  
+  #compute and store the value of rateTree
+for (t in 2:ncol(rateTree)){
+  for(i in 2:t){
+    rateTree[i,t]=get_Rid(r_star = r_stars[t],id = i,vol = vol_ts[(t-1)])
+  }
+}
+  return (rateTree)
+}
+
+Rates_tree=get_all_Rids(r_stars = r_stars,vol_ts = vol_ts)
+```
+
+## Mapping interest rate tree to discount factor tree and compute recursively discount factor curve
+
+Given the short interest rate tree, we can map the interest rate tree to a discount factor tree of 0.5 year maturity at each state $s$ and each time step $t$ because short term discount factor is an one-to-one mapping relationship. In particular, we will use the following formula to compute discount factor
+$$D^{id}(t,0.5)=\frac{1}{1+r^{id}/2}$$
+where $id$ refers to the number of downward movements or state, $t$ refers to the time step.
+```{r}
+get_short_DT_tree=function(Rates_tree){
+  DT_short_tree=1/(1+Rates_tree/2)
+  return (DT_short_tree)
+}
+DT_short_tree=get_short_DT_tree(Rates_tree = Rates_tree)
+```
+
+Given the short-term discount factor tree, we can compute the cash flow tree or discount factor tree with various maturity using the following backward recursive scheme for each $D(0,T)$ of T=0.5,1,...,15
+$$D^{s}(t,T)=D^s(t,0.5)\frac{D^{su}(t+0.5,T-0.5)+D^{sd}(t+0.5,T-0.5)}{2}$$
+where $s$ denotes the state, $su$ denotes upward state and $sd$ denotes doward state one step later. This formula, in essence, is equivalent to the recusive scheme in the TA notes with interest rate. 
+```{r}
+#define a function to compute each individual D(0,T)
+compt_D0T=function(DT_short_tree,Mar){
+  #initialize the matrix of D^s(t,T) matrix 
+  DsT_mat=DT_short_tree[1:Mar,1:Mar]
+  #perform the backward inductive scheme
+  for (t in Mar:2){
+    for (i in 1:(t-1)){
+      DsT_mat[i,(t-1)]=DsT_mat[i,(t-1)]*mean(c(DsT_mat[i,t],DsT_mat[(i+1),t]))
+    }
+  }
+  return (DsT_mat[1,1])}
+#define a function to compute all the D(0,T)
+comp_all_D0T=function(DT_short_tree){
+  #initialize a vector of 30 discount factor at time 0
+  fitted_DTs=rep(0,ncol(DT_short_tree))
+  fitted_DTs[1]=DT_short_tree[1,1]
+  for (Mar in 2:length(fitted_DTs)){
+    fitted_DTs[Mar]=compt_D0T(DT_short_tree = DT_short_tree,Mar = Mar)
+  }
+return (fitted_DTs)
+}
+
+fitted_DTs=comp_all_D0T(DT_short_tree = DT_short_tree)
+```
+
+## Define Cost function and Perform Optimization to get the numerical solution
+Because it is complicated to solve all the $r_t^*$ analytically, we turn to find its numerical solution by minimizing the Mean Average Error between the fitted DTs and the true DTs. 
+
+We, first, need to defined a weighted sum error function (because the algorithm overweighs the first parameter and underweighs the last one, we want to do a sigmoid-like transformation to reverse this weighting):
+```{r}
+compt_weightedError=function(True_values,fitted_values){ 
+  WE=sum((1/(1+exp(-seq(-1.5,1.5,3.0/29))))*abs(fitted_values-True_values))
+  #WE=sum(seq(2,3,1/29)*abs(fitted_values-True_values))
+  return (WE)
+}
+WE=compt_weightedError(True_values = True_DTs,fitted_values = fitted_DTs)
+```
+
+Then, we can assimble all the function into a pipeline as a cost function or optimization objective. 
+```{r}
+Cost_Fun=function(r_stars,vol_ts,True_DTs){
+  Rates_tree=get_all_Rids(r_stars = r_stars,vol_ts = vol_ts)
+  DT_short_tree=get_short_DT_tree(Rates_tree = Rates_tree)
+  fitted_DTs=comp_all_D0T(DT_short_tree = DT_short_tree)
+  WE=compt_weightedError(True_values = True_DTs,fitted_values = fitted_DTs)
+  return (WE)
+}
+Cost_Fun(r_stars = r_stars,vol_ts = vol_ts ,True_DTs = True_DTs)
+```
+Finally, we can feed the Cost Function into optimizer and try to find the optimal numerical solution. 
+```{r}
+#Num_sol=optim(par = r_stars,fn = Cost_Fun,method = "BFGS",vol_ts=vol_ts,True_DTs=True_DTs,control = list(maxit=100),lower = rep(0,30))
+Num_sol=nlminb(start = r_stars,
+               objective =Cost_Fun,vol_ts=vol_ts,True_DTs=True_DTs,lower = rep(0,30),control = list(trace=1,iter.max=600))
+R_star_num=Num_sol$par
+R_star_num
+```
+
+Once we got our numerical solution for $r_t^*$, we can again compute the whole tree.
+```{r}
+Opt_tree=get_all_Rids(r_stars = R_star_num,vol_ts = vol_ts)
+```
+
+
+
+### Question 2
+
+Compute the expected value of the short rate tree at each time step, and plot the risk_neural short rate curve.Because the rates follow binary distribution.
+The martingale probablity of each rate should be 
+$$C^{iu}_n(\frac{1}{2})^n$$
+where n is the number of steps, i is the number of upward movement.
+
+```{r}
+#turn all zero values into NA
+Opt_tree[Opt_tree==0]=NA
+#compute a martinagle probability matrix 
+Q_prob_mat=Opt_tree
+#compute the martingale probability of each node
+for (t in 1:ncol(Q_prob_mat)){
+  for (i in 1:t){
+    Q_prob_mat[i,t]=choose(n = t-1,k = i-1)*(1/2)^(t-1)
+  }
+}
+#compute the martingale probability 
+Ex_R_q=colSums(Opt_tree*Q_prob_mat,na.rm = T)
+#plot the risk_neural short rate curve
+plot(y=Ex_R_q,x=seq(0,14.5,0.5),type='l',main = 'Risk Neural Expected short rate Curve',
+     ylab = 'Rate',xlab = 'Maturity')
+```
+
+Recall the formula of forward rate in lecture1 from discount factor, we can compute the short-term (0.5 year) forward rates at each time step using the following formula:
+$$2tf_{0.5}=2\frac{(1+r_{t+0.5}/2)^{t+0.5}}{(1+r_t/2)^t}-1=2\frac{D(0,t)}{D(0,t+0.5)}-1$$
+```{r}
+#compute the forward rates and plot it over the martingale expected rate
+forward_rates=Ex_R_q
+forward_rates[1]=2*(1/True_DTs[1]-1)
+forward_rates[2:30]=2*(True_DTs[-length(True_DTs)]/True_DTs[-1]-1)
+#plot the short-term rate overlay on the risk-neutral expected short rate
+plot(Ex_R_q,type='l',main = 'Martingale expected rate over Forward rate Curve',
+     ylab = 'Rate',xlab = 'Maturity',col='red')
+lines(x = forward_rates,col='blue')
+legend('topleft', legend = c("Q Expected Rates", "Forward Rates"),
+col = c("red", "blue"), lty = 1)
+```
+
