@@ -1,0 +1,190 @@
+---
+title: "Fixed_Income_stringModel_YiTaoHu"
+author: "YiTao Hu"
+date: "26/02/2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+```{r message=FALSE, warning=FALSE}
+#first we import data and some useful libraries
+library(derivmkts)
+library(LSMonteCarlo)
+library(readxl)
+library(readr)
+D_0_T=read_excel("Homework 7 pfilea.xlsx", col_names = FALSE)
+D_0_T=D_0_T$...1
+sigmas=read_excel("Homework 7 sigma.xlsx",      col_names = FALSE)
+sigmas=sigmas$...1
+Corr_mat=read_csv("Homework 7 corrin.csv", 
+    col_names = FALSE)
+U=read_csv("Homework 7 corchol.csv", 
+     col_names = FALSE)
+U=as.matrix(U)
+```
+##Q1
+#Solve for r* and compute recusive scheme for dD(t,T)
+Recall dynamics of the bond price under string model
+$$dD(t,T)=r_t^*D(t,T)dt+\sigma(T-t)D(t,T)dW(t,T)$$
+
+where $W(t,T)$ are correlated Brownian Motion at time t. in other words, $d\vec{W_t}$ is a multivariate normal variavle $MVN(0,\Sigma)$
+where $\Sigma$ is the var-cov matrix of $MVN$
+
+First,we define a function to compute $d\vec{W_t}$. 
+$$\vec{dW_t}=\vec{W_{t+dt}}-\vec{W_t}=\sqrt{dt}U^T\vec{Z}$$
+
+where $U^T$ is the Cholesky root of Correlation matrix and $\vec{Z}$ is a standard MVN
+```{r}
+compute_dWt=function(cho_corr,dt){
+  dWt=sqrt(dt)*cho_corr%*%rnorm(nrow(as.matrix(cho_corr)))
+  return(dWt)
+}
+dWt=compute_dWt(cho_corr = U[-20,-20],dt = 0.5)
+```
+
+Then we need to define a function to compute r*
+```{r}
+compt_rf=function(D_0.5){
+  rf=2*(1/D_0.5-1)
+  return(rf)
+}
+rf=compt_rf(D_0.5 = D_0_T[1])
+```
+
+From the formula above, we can get our extrapolation scheme:
+$$D(t+dt,T)=D(t,T)+dD(t,T)=D(t,T)+r_t^*D(t,T)dt+\sigma(T-t)D(t,T)dW(t,T)$$
+```{r}
+#define a function to compute D(t+dt,T)
+comput_Dtforward=function(DT,D_0.5,sigmas,dt,cho_corr){
+  rf=compt_rf(D_0.5 = D_0.5)
+  dWt=compute_dWt(cho_corr = cho_corr,dt = dt )
+  D_tplus=DT+rf*DT*dt+sigmas*DT*dWt
+  return(D_tplus)
+}
+
+```
+#Compute one D(t,T) trajectory
+Now we can compute one particular trajectories of the whole DT function series using the recusive scheme defined above. 
+```{r}
+#define a function to compute one particular senerio
+cho_corr=U
+senoro_sim=function(D0T,sigmas,cho_corr){
+  #initialize the scenario matrix 
+  scenario_df=data.frame(matrix(0,nrow = 20,ncol = 20))
+  colnames(scenario_df)=seq(0,9.5,0.5)
+  scenario_df[,1]=D0T
+  #simulate the trajectories
+  for (t in 2:20){
+    scenario_df[t:20,t]=comput_Dtforward(DT = scenario_df[t:20,(t-1)],D_0.5 = scenario_df[(t-1),(t-1)],sigmas = sigmas[1:(21-t)],dt = 0.5,cho_corr = cho_corr[1:(21-t),1:(21-t)])
+  }
+  return(as.matrix(scenario_df))
+}
+```
+Then, we can perform 10,000 scenarios simulation
+```{r}
+batch_sim=function(D0T,sigmas,scenario_num=10000)
+  {
+  #initialize the simulation
+  sim_array=array(data = 0,dim = c(20,20,scenario_num))
+  #because paralell computing exceeds the CPU limit, here we use for loop to do simulation
+  for(i in 1:scenario_num){
+    sim_array[,,i]=senoro_sim(D0T = D0T,sigmas = sigmas,cho_corr = cho_corr)
+  }
+  return(sim_array)
+}
+sim_out=batch_sim(D0T=D_0_T[1:20],sigmas=sigmas[1:20],scenario_num=10000)
+#Then,we can look at the structure's average time decay across different scenerios
+Ave_sim_decay=apply(sim_out, MARGIN =c(1,2), FUN = mean)
+Ave_sim_decay
+```
+##2
+Here, we need to compute the forward par rates five years ahead from the initial term structure.
+$$C_{forward}=2[\frac{100D(N)-100D(N+M)}{\sum^{2M}_{i=1}D(N+i/2)}]$$
+
+```{r}
+Forward_DTs=D_0_T[11:21]
+Forward_par=2*(100*Forward_DTs[1]-100*Forward_DTs[2:11])/cumsum(Forward_DTs[2:11])
+Forward_par
+```
+
+
+##3
+We first need to define a function to map discount factor to par rates.
+```{r}
+
+#define a function to get the Discount factor decay for T=0.5:5
+get_DT_decay=function(sim_mat)
+{
+  DTdecay=matrix(data = 0,nrow = 11,ncol = 10)
+  Trim_mat=sim_mat
+  for (T in 1:10){
+    DTdecay[,T]=diag(Trim_mat)[1:11]
+    Trim_mat=Trim_mat[-1,-ncol(Trim_mat)]
+  }
+  DTdecay=t(DTdecay)
+  rownames(DTdecay)=seq(0.5,5,0.5)
+  colnames(DTdecay)=seq(0,5,0.5)
+  return(DTdecay)
+}
+```
+Compute the par rates at each time step
+```{r}
+compt_par=function(DT){
+  ParRates=2*(100-100*DT)/cumsum(DT)/100
+  return(ParRates)
+}
+#assible the two function above into one 
+get_par_rates=function(sim_mat){
+  DTs=get_DT_decay(sim_mat)
+  Par_decay=apply(DTs, 2, compt_par)
+  return(Par_decay)
+}
+#compute the terminal payoff at each scenarios 
+get_batch_par=function(sim_asset){
+  #initialize the par simulation arrary
+  par_array=array(data = 0,dim = c(10,11,dim(sim_asset)[3]))
+  #because paralell computing exceeds the CPU limit, here we use for loop to do simulation
+  for(i in 1:dim(sim_asset)[3]){
+    par_array[,,i]=get_par_rates(sim_asset[,,i])
+  }
+  return(par_array)
+}
+#compute all par rates decay based on all simulation
+par_rates_batch=get_batch_par(sim_asset = sim_out)
+```
+
+
+Recall the future price of the contract is the risk-neutral expected value of the underlying asset:
+$$K=E^Q(B_T)$$
+where $B_T$ in this case is the price of the bond to deliver at terminal time T.
+
+First,we need to mapping par rates dynamics to bond price at time T.
+```{r}
+#compute bond price at terminal time T=5 for each scenerio and each maturity
+bond_value=data.frame(matrix(0,nrow = 10,000,ncol = 10))
+colnames(bond_value)=seq(0.5,5,0.5)
+for (i in 1:dim(par_rates_batch)[3]){
+    for (mar in 1:10){
+      bond_value[i,mar]=bondpv(coupon = Forward_par[mar],mat = (mar/2),yield =  par_rates_batch[mar,11,i],principal = 100,freq = 2)
+    }
+}
+#select out the cheapest bond for each scenerio
+B_T_min=apply(bond_value[,seq(2,10,2)], 1, min)
+#compute the risk-neutral expected value 
+K=mean(apply(bond_value[,seq(2,10,2)], 2, mean))
+K
+```
+
+Recall the price of any rate-related derivative should be the risk-neutral expected value of discounted final cash flow.
+$$Option=E^Q(e^{-\int^T_0Rsd_s}(K-B_{Tcheap}))$$
+where both the bond to deliver $B_{Tcheap}$and the short rates $Rs$ are stochastic.
+```{r}
+#grab the paths of short rates for all timestep
+Discount_sim=apply(sim_out, 3, diag)[1:10,]
+#multiple the short rate to get total discount factor for each scenoro
+Disount_T=apply(Discount_sim, 2, cumprod)[10,]
+#compute the option price 
+Opt_val=mean(Disount_T*(K-B_T_min))
+Opt_val
+```
+
